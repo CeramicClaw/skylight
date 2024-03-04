@@ -13,18 +13,20 @@ impl std::fmt::Display for Moon {
 }
 
 impl Moon {
-    /// Get a characteristic moon at a given DateTime
-    pub fn new_moon(date: DateTime) -> Moon {
+    /// Get a characteristic moon at a given DateTime and observer lat/lon
+    /// Assumes a 1m observation height
+    pub fn new_moon(date: DateTime, obs_lat: f64, obs_lon: f64) -> Moon {
+        let obs_elev = 1.0; // meters
         let mut moon = Moon::default();
         moon.date = date;
-        // Calculate Julian dates
+        // Julian dates
         let jd = julian_day(&moon.date);
         let jde = julian_ephemeris_day(jd, moon.date.delta_t);
-        //let jc = julian_century(jd);
+        let jc = julian_century(jd);
         let jce = julian_ephemeris_century(jde);
-        //let jce = -0.077221081451;
+        let jme = jce / 10.0;
 
-        // Calculate l, r, and b terms
+        // l, r, and b terms
         let d = moon_mean_elongation(jce);
         let m = sun_mean_anomaly(jce);
         let m_prime = moon_mean_anomaly(jce);
@@ -38,7 +40,7 @@ impl Moon {
         let b_term = b_term(d, m, m_prime, f, jce);
         println!("b_term: {}", b_term);
 
-        // Calculate delta l and delta b
+        // Delta l and Delta b
         let a1 = a1(jce); // Eq. 18 (degrees)
         let a2 = a2(jce); // Eq. 19 (degrees)
         let a3 = a3(jce); // Eq. 20 (degrees)
@@ -48,17 +50,68 @@ impl Moon {
         let delta_b = delta_b(a1, a3, l_prime, m_prime, f);
         println!("b + delta_b: {}", b_term + delta_b);
 
-        // Calculate moon longitude and latitude (degrees)
+        // Moon longitude and latitude (degrees)
         let moon_lon = moon_longitude(l_prime, l_term, delta_l);
         println!("lambda prime: {}", moon_lon);
-        let moon_lat = moon_latitutde(b_term, delta_b);
-        println!("Beta: {}", moon_lat);
+        let beta = moon_latitutde(b_term, delta_b);
+        println!("Beta: {}", beta);
 
+        // Moon distance from center of Earth
         let delta = moon_distance(r_term);
         println!("Delta: {}", delta);
 
-        let pi = moon_horizontal_parallax(delta);
+        // Horizontal parallax
+        let pi = moon_horizontal_parallax(delta); // Radians
         println!("Pi: {}", pi);
+
+        // Nutation in Longitude and Obliquity
+        let x0 = x0(jce);
+        let x1 = x1(jce);
+        let x2 = x2(jce);
+        let x3 = x3(jce);
+        let x4 = x4(jce);
+        let delta_psi = delta_psi(jce, x0, x1, x2, x3, x4);
+        println!("delta_psi: {}", delta_psi);
+        let delta_epsilon = delta_epsilon(jce, x0, x1, x2, x3, x4);
+        println!("delta_epsilon: {}", delta_epsilon);
+
+        // True Obliquity of the Ecliptic
+        let epsilon = epsilon(jme, delta_epsilon);
+        println!("epsilon: {}", epsilon);
+        
+        // Apparent Moon Longitude
+        let lambda = moon_lon + delta_psi; // Eq. 38
+        println!("lambda: {}", lambda);
+
+        // Apparent Sidereal Time at Greenwich
+        let eta0 = eta0(jd, jc);
+        let eta = eta(eta0, delta_psi, epsilon);
+        println!("eta: {}", eta);
+
+        // Moon's Right Ascension
+        let alpha = alpha(lambda, epsilon, beta);
+        println!("alpha: {}", alpha);
+
+        // Moon's Geocentric Declination
+        let delta_small = delta_small(beta, epsilon, lambda);
+        println!("delta_small: {}", delta_small);
+
+        // Observer Local Hour Angle
+        let h = obs_local_angle(eta, obs_lon, alpha);
+        println!("H: {}", h);
+
+        // Moon's Topocentric Right Ascention
+        let u = u(obs_lat); // Radians
+        let x = x(u, obs_lat, obs_elev);
+        let y = y(u, obs_lat, obs_elev);
+        let delta_alpha = delta_alpha(x, pi, h, delta_small);
+        println!("delta_alpha: {}", delta_alpha);
+        let alpha_prime = alpha + delta_alpha; // Eq. 48
+        println!("alpha_prime: {}", alpha_prime);
+
+        // Moon's Topocentric Declination
+        let delta_small_prime = delta_small_prime(delta_small, x, y, pi, delta_alpha, h);
+        println!("delta_small_prime: {}", delta_small_prime);
 
         moon
     }
@@ -72,7 +125,8 @@ impl Moon {
 
 /// Eq. 9 (degrees)
 fn moon_mean_longitude(t: f64) -> f64 {
-    let mut l_prime = 218.3164477 + 481267.88123421 * t - 0.0015786 * t * t + (t * t * t) / 538841.0 - (t * t * t * t) / 65194000.0;
+    let mut l_prime = 218.3164477 + 481267.88123421*t - 0.0015786*t.powi(2) + t.powi(3)/538841.0 
+        - t.powi(4)/65194000.0;
     l_prime = l_prime % 360.0;
     if l_prime < 0.0 {
         l_prime += 360.0;
@@ -82,7 +136,8 @@ fn moon_mean_longitude(t: f64) -> f64 {
 
 /// Eq. 10 (degrees)
 fn moon_mean_elongation(t: f64) -> f64 {
-    let mut d = 297.8501921 + 445267.1114034 * t - 0.0018819 * t * t + (t * t * t) / 545868.0 - (t * t * t * t) /113065000.0;
+    let mut d = 297.8501921 + 445267.1114034*t - 0.0018819*t.powi(2) + t.powi(3)/545868.0 
+    - t.powi(4)/113065000.0;
     d = d % 360.0;
     if d < 0.0 {
         d += 360.0;
@@ -92,20 +147,17 @@ fn moon_mean_elongation(t: f64) -> f64 {
 
 /// Eq. 11 (degrees)
 fn sun_mean_anomaly(t: f64) -> f64 {
-    let m = 357.5291092 + 35999.0502909 * t - 0.0001536 * t * t + (t *t * t) / 24490000.0;
-    m
+    357.5291092 + 35999.0502909*t - 0.0001536*t.powi(2) + t.powi(3)/24490000.0
 }
 
 /// Eq. 12 (degrees)
 fn moon_mean_anomaly(t: f64) -> f64 {
-    let m_prime = 134.9633964 + 477198.8675055 * t + 0.0087414 * t * t + (t * t * t) / 69699.0 - (t * t * t * t) /14712000.0;
-    m_prime
+    134.9633964 + 477198.8675055*t + 0.0087414*t.powi(2) + t.powi(3)/69699.0 - t.powi(4)/14712000.0
 }
 
 // Eq. 13 (degrees)
 fn moon_arg_of_latitude(t: f64) -> f64 {
-    let f = 93.2720950 + 483202.0175233 * t - 0.0036539 * t * t - (t * t * t) / 3526000.0 + (t * t * t * t) / 863310000.0;
-    f
+    93.2720950 + 483202.0175233*t - 0.0036539*t.powi(2) - t.powi(3)/3526000.0 + t.powi(4)/863310000.0
 }
 
 // Eq. 14 (0.000001 degrees)
@@ -334,35 +386,30 @@ fn b_term(d: f64, m: f64, m_prime: f64, f: f64, t: f64) -> f64 {
 
 // Eq. 18 (degrees)
 fn a1(t: f64) -> f64 {
-    let a1 = 119.75 + 131.849 * t;
-    a1
+    119.75 + 131.849 * t
 }
 
 // Eq. 19 (degrees)
 fn a2(t: f64) -> f64 {
-    let a2 = 53.09 + 479264.29 * t;
-    a2
+    53.09 + 479264.29 * t
 }
 
 // Eq. 20 (degrees)
 fn a3(t: f64) -> f64 {
-    let a3 = 313.45 + 481266.484 * t;
-    a3
+    313.45 + 481266.484 * t
 }
 
 // Eq. 21 (degrees)
 fn delta_l(a1: f64, a2: f64, l_prime: f64, f: f64) -> f64{
-    let delta_l = 3958.0 * a1.to_radians().sin() + 1962.0 * (l_prime - f).to_radians().sin() + 
-    318.0 * a2.to_radians().sin();
-    delta_l
+    3958.0 * a1.to_radians().sin() + 1962.0 * (l_prime - f).to_radians().sin() + 
+    318.0 * a2.to_radians().sin()
 }
 
 // Eq. 22 (degrees)
 fn delta_b(a1: f64, a3: f64, l_prime: f64, m_prime: f64, f: f64) -> f64 {
-    let delta_b = -2235.0 * l_prime.to_radians().sin() + 382.0 * a3.to_radians().sin() + 
+    -2235.0 * l_prime.to_radians().sin() + 382.0 * a3.to_radians().sin() + 
     175.0 * (a1 - f).to_radians().sin() + 175.0 * (a1 + f).to_radians().sin() + 
-    127.0 * (l_prime - m_prime).to_radians().sin() - 115.0 * (l_prime + m_prime).to_radians().sin();
-    delta_b
+    127.0 * (l_prime - m_prime).to_radians().sin() - 115.0 * (l_prime + m_prime).to_radians().sin()
 }
 
 // Eq. 23 (degrees)
@@ -387,12 +434,239 @@ fn moon_latitutde(b_term: f64, delta_b: f64) -> f64 {
 
 // Eq. 25 (km)
 fn moon_distance(r: f64) -> f64 {
-    let dist = 385000.56 + r / 1000.0;
-    dist
+    385000.56 + r / 1000.0
 }
 
 // Eq. 26 (radians)
 fn moon_horizontal_parallax(delta: f64) -> f64 {
-    let pi = (6378.14 / delta).asin();
-    pi
+    (6378.14 / delta).asin()
+}
+
+// Eq. 27 (degrees)
+fn x0(jce: f64) -> f64 {
+    297.85036 + 445267.111480 * jce - 0.0019142 * jce.powi(2) + jce.powi(3)/189474.0
+}
+
+// Eq. 28 (degrees)
+fn x1(jce: f64) -> f64 {
+    357.52772 + 35999.050340 * jce - 0.0001603 * jce.powi(2) + jce.powi(3)/300000.0
+}
+
+// Eq. 29 (degrees)
+fn x2(jce: f64) -> f64 {
+    134.96298 + 477198.867398 * jce + 0.0086972 * jce.powi(2) + jce.powi(3)/56250.0
+}
+
+// Eq. 30 (degrees)
+fn x3(jce: f64) -> f64 {
+    93.27191 + 483202.017538 * jce - 0.0036825 * jce.powi(2) + jce.powi(3)/327270.0
+}
+
+// Eq. 31 (degrees)
+fn x4(jce: f64) -> f64 {
+    125.04452 - 1934.136261 * jce + 0.0020708 * jce.powi(2) + jce.powi(3)/450000.0
+}
+
+// Eq. 32 & 34 (degrees)
+fn delta_psi(jce: f64, x0: f64, x1: f64, x2: f64, x3: f64, x4: f64) -> f64 {
+    // Y0, Y1, Y2, Y3, Y4, a, B
+    let values: Vec<(i32, i32, i32, i32, i32, i32, f64)> = vec![
+        (0, 0, 0, 0, 1, -171996, -174.2),
+        (-2, 0, 0, 2, 2, -13187, -1.6),
+        (0, 0, 0, 2, 2, -2274, -0.2),
+        (0, 0, 0, 0, 2, 2062, 0.2),
+        (0, 1, 0, 0, 0, 1426, -3.4),
+        (0, 0, 1, 0, 0, 712, 0.1),
+        (-2, 1, 0, 2, 2, -517, 1.2),
+        (0, 0, 0, 2, 1, -386, -0.4),
+        (0, 0, 1, 2, 2, -301, 0.0),
+        (-2, -1, 0, 2, 2, 217, -0.5),
+        (-2, 0, 1, 0, 0, -158, 0.0),
+        (-2, 0, 0, 2, 1, 129, 0.1),
+        (0, 0, -1, 2, 2, 123, 0.0),
+        (2, 0, 0, 0, 0, 63, 0.0),
+        (0, 0, 1, 0, 1, 63, 0.1),
+        (2, 0, -1, 2, 2, -59, 0.0),
+        (0, 0, -1, 0, 1, -58, -0.1),
+        (0, 0, 1, 2, 1, -51, 0.0),
+        (-2, 0, 2, 0, 0, 48, 0.0),
+        (0, 0, -2, 2, 1, 46, 0.0),
+        (2, 0, 0, 2, 2, -38, 0.0),
+        (0, 0, 2, 2, 2, -31, 0.0),
+        (0, 0, 2, 0, 0, 29, 0.0),
+        (-2, 0, 1, 2, 2, 29, 0.0),
+        (0, 0, 0, 2, 0, 26, 0.0),
+        (-2, 0, 0, 2, 0, -22, 0.0),
+        (0, 0, -1, 2, 1, 21, 0.0),
+        (0, 2, 0, 0, 0, 17, -0.1),
+        (2, 0, -1, 0, 1, 16, 0.0),
+        (-2, 2, 0, 2, 2, -16, 0.1),
+        (0, 1, 0, 0, 1, -15, 0.0),
+        (-2, 0, 1, 0, 1, -13, 0.0),
+        (0, -1, 0, 0, 1, -12, 0.0),
+        (0, 0, 2, -2, 0, 11, 0.0),
+        (2, 0, -1, 2, 1, -10, 0.0),
+        (2, 0, 1, 2, 2, -8, 0.0),
+        (0, 1, 0, 2, 2, 7, 0.0),
+        (-2, 1, 1, 0, 0, -7, 0.0),
+        (0, -1, 0, 2, 2, -7, 0.0),
+        (2, 0, 0, 2, 1, -7, 0.0),
+        (2, 0, 1, 0, 0, 6, 0.0),
+        (-2, 0, 2, 2, 2, 6, 0.0),
+        (-2, 0, 1, 2, 1, 6, 0.0),
+        (2, 0, -2, 0, 1, -6, 0.0),
+        (2, 0, 0, 0, 1, -6, 0.0),
+        (0, -1, 1, 0, 0, 5, 0.0),
+        (-2, -1, 0, 2, 1, -5, 0.0),
+        (-2, 0, 0, 0, 1, -5, 0.0),
+        (0, 0, 2, 2, 1, -5, 0.0),
+        (-2, 0, 2, 0, 1, 4, 0.0),
+        (-2, 1, 0, 2, 1, 4, 0.0),
+        (0, 0, 1, -2, 0, 4, 0.0),
+        (-1, 0, 1, 0, 0, -4, 0.0),
+        (-2, 1, 0, 0, 0, -4, 0.0),
+        (1, 0, 0, 0, 0, -4, 0.0),
+        (0, 0, 1, 2, 0, 3, 0.0),
+        (0, 0, -2, 2, 2, -3, 0.0),
+        (-1, -1, 1, 0, 0, -3, 0.0),
+        (0, 1, 1, 0, 0, -3, 0.0),
+        (0, -1, 1, 2, 2, -3, 0.0),
+        (2, -1, -1, 2, 2, -3, 0.0),
+        (0, 0, 3, 2, 2, -3, 0.0),
+        (2, -1, 0, 2, 2, -3, 0.0)];
+    
+    let mut delta_psi = 0.0;
+    for v in values.iter() {
+        delta_psi += (v.5 as f64 + v.6 * jce) * 
+            (x0 * v.0 as f64 + x1 * v.1 as f64 + x2 * v.2 as f64 + x3 * v.3 as f64 + x4 * v.4 as f64).to_radians().sin();
+    }
+    delta_psi / 36000000.0
+}
+
+// Eq. 33 & 35 (degrees)
+fn delta_epsilon(jce: f64, x0: f64, x1: f64, x2: f64, x3: f64, x4: f64) -> f64 {
+    // Y0, Y1, Y2, Y3, Y4, c, d
+    let values: Vec<(i32, i32, i32, i32, i32, i32, f64)> = vec![
+        (0, 0, 0, 0, 1, 92025, 8.9),
+        (-2, 0, 0, 2, 2, 5736, -3.1),
+        (0, 0, 0, 2, 2, 977, -0.5),
+        (0, 0, 0, 0, 2, -895, 0.5),
+        (0, 1, 0, 0, 0, 54, -0.1),
+        (0, 0, 1, 0, 0, -7, 0.0),
+        (-2, 1, 0, 2, 2, 224, -0.6),
+        (0, 0, 0, 2, 1, 200, 0.0),
+        (0, 0, 1, 2, 2, 129, -0.1),
+        (-2, -1, 0, 2, 2, -95, 0.3),
+        (-2, 0, 0, 2, 1, -70, 0.0),
+        (0, 0, -1, 2, 2, -53, 0.0),
+        (0, 0, 1, 0, 1, -33, 0.0),
+        (2, 0, -1, 2, 2, 26, 0.0),
+        (0, 0, -1, 0, 1, 32, 0.0),
+        (0, 0, 1, 2, 1, 27, 0.0),
+        (0, 0, -2, 2, 1, -24, 0.0),
+        (2, 0, 0, 2, 2, 16, 0.0),
+        (0, 0, 2, 2, 2, 13, 0.0),
+        (-2, 0, 1, 2, 2, -12, 0.0),
+        (0, 0, -1, 2, 1, -10, 0.0),
+        (2, 0, -1, 0, 1, -8, 0.0),
+        (-2, 2, 0, 2, 2, 7, 0.0),
+        (0, 1, 0, 0, 1, 9, 0.0),
+        (-2, 0, 1, 0, 1, 7, 0.0),
+        (0, -1, 0, 0, 1, 6, 0.0),
+        (2, 0, -1, 2, 1, 5, 0.0),
+        (2, 0, 1, 2, 2, 3, 0.0),
+        (0, 1, 0, 2, 2, -3, 0.0),
+        (0, -1, 0, 2, 2, 3, 0.0),
+        (2, 0, 0, 2, 1, 3, 0.0),
+        (-2, 0, 2, 2, 2, -3, 0.0),
+        (-2, 0, 1, 2, 1, -3, 0.0),
+        (2, 0, -2, 0, 1, 3, 0.0),
+        (2, 0, 0, 0, 1, 3, 0.0),
+        (-2, -1, 0, 2, 1, 3, 0.0),
+        (-2, 0, 0, 0, 1, 3, 0.0),
+        (0, 0, 2, 2, 1, 3, 0.0)];
+    
+    let mut delta_epsilon = 0.0;
+    for v in values.iter() {
+        delta_epsilon += (v.5 as f64 + v.6 * jce) * 
+            (x0 * v.0 as f64 + x1 * v.1 as f64 + x2 * v.2 as f64 + x3 * v.3 as f64 + x4 * v.4 as f64).to_radians().cos();
+    }
+    delta_epsilon / 36000000.0
+}
+
+// Eq. 36 & 37 (degrees)
+fn epsilon(jme: f64, delta_epsilon: f64) -> f64 {
+    let u = jme / 10.0;
+    let epsilon0 = 84381.448 - 4680.93*u - 1.55*u.powi(2) + 1999.25*u.powi(3) -
+    51.38*u.powi(4) - 249.67*u.powi(5) - 39.05*u.powi(6) + 7.12*u.powi(7) +
+    27.87*u.powi(8) + 5.79*u.powi(9) + 2.45*u.powi(10);
+    epsilon0/3600.0 + delta_epsilon
+}
+
+// Eq. 39
+fn eta0(jd: f64, jc: f64) -> f64 {
+    280.46061837 + 360.98564736629*(jd - 2451545.0) + 0.000387933*jc.powi(2) - jc.powi(3)/38710000.0
+}
+
+// Eq. 40
+fn eta(eta0: f64, delta_psi: f64, epsilon: f64) -> f64 {
+    let mut eta = eta0 + delta_psi*epsilon.to_radians().cos();
+    eta = eta % 360.0;
+    if eta < 0.0 {
+        eta += 360.0;
+    }
+    eta
+}
+
+// Eq 41 (degrees)
+fn alpha(lambda: f64, epsilon: f64, beta: f64) -> f64 {
+    let mut alpha = (lambda.to_radians().sin()*epsilon.to_radians().cos() - 
+        beta.to_radians().tan()*epsilon.to_radians().sin()).atan2(lambda.to_radians().cos());
+    alpha = alpha.to_degrees() % 360.0;
+    if alpha < 0.0 {
+        alpha += 360.0;
+    }
+    alpha
+}
+
+// Eq. 42 (degrees)
+fn delta_small(beta: f64, epsilon: f64, lambda: f64) -> f64 {
+    (beta.to_radians().sin()*epsilon.to_radians().cos() + 
+        beta.to_radians().cos()*epsilon.to_radians().sin()*lambda.to_radians().sin()).asin().to_degrees()
+}
+
+// Eq. 43
+fn obs_local_angle(eta: f64, obs_lon: f64, alpha: f64) -> f64 {
+    let mut h = (eta + obs_lon - alpha) % 360.0;
+    if h < 0.0 {
+        h += 360.0;
+    }
+    h
+}
+
+// Eq. 44 (Radians)
+fn u(obs_lat: f64) -> f64 {
+    (0.99664719 * obs_lat.to_radians().tan()).atan()
+}
+
+// Eq. 45
+fn x(u: f64, obs_lat: f64, obs_elev: f64) -> f64 {
+    u.cos() + (obs_elev * obs_lat.to_radians().cos())/6378140.0
+}
+
+// Eq. 46
+fn y(u: f64, obs_lat: f64, obs_elev: f64) -> f64 {
+    0.99664719*u.sin() + (obs_elev * obs_lat.to_radians().sin())/6378140.0
+}
+
+// Eq. 47 (degrees)
+fn delta_alpha(x: f64, pi: f64, h: f64, delta_small: f64) -> f64 {
+    ((-x*pi.sin()*h.to_radians().sin()).atan2(delta_small.to_radians().cos() - 
+        x*pi.sin()*h.to_radians().cos())).to_degrees()
+}
+
+// Eq. 49 (degrees)
+fn delta_small_prime(delta_small: f64, x: f64, y: f64, pi: f64, delta_alpha: f64, h: f64) -> f64 {
+    (((delta_small.to_radians().sin() - y*pi.sin())*delta_alpha.to_radians().cos()).atan2(
+        delta_small.to_radians().cos() - x*pi.sin()*h.to_radians().cos())).to_degrees()
 }
