@@ -2,8 +2,11 @@ use skylight::*;
 use skylight::moon::*;
 
 fn main() {
-    let mut t = new_time(2009, Month::JULY, 22, 1, 33, 0);
-    //let mut t = new_time(1992, Month::APRIL, 12, 0, 0, 0);
-    t.delta_t = 66.4;
-    println!("{}", Moon::new_moon(t, 24.61167, 143.36167));
+    //let mut t = new_time(2009, Month::JULY, 22, 1, 33, 0);
+    let mut t = new_time(1998, Month::MAY, 18, 0, 0, 0);
+    //t.delta_t = 66.4;
+    t.delta_t = 0.0;
+    //println!("{}", Moon::new_moon(t, 24.61167, 143.36167));
+    // Page ~200 has the moon positions
+    println!("{}", Moon::new_moon(t, 0.0, 0.0));
 }

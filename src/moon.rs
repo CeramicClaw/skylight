@@ -1,7 +1,11 @@
 use crate::*;
 
+//let const DEBUG = false;
+
 pub struct Moon {
     date: DateTime,
+    //right_ascention: f64,
+    //delcination: f64
 }
 
 impl std::fmt::Display for Moon {
@@ -90,11 +94,11 @@ impl Moon {
 
         // Moon's Right Ascension
         let alpha = alpha(lambda, epsilon, beta);
-        println!("alpha: {}", alpha);
+        
 
         // Moon's Geocentric Declination
         let delta_small = delta_small(beta, epsilon, lambda);
-        println!("delta_small: {}", delta_small);
+        
 
         // Observer Local Hour Angle
         let h = obs_local_angle(eta, obs_lon, alpha);
@@ -107,12 +111,16 @@ impl Moon {
         let delta_alpha = delta_alpha(x, pi, h, delta_small);
         println!("delta_alpha: {}", delta_alpha);
         let alpha_prime = alpha + delta_alpha; // Eq. 48
-        println!("alpha_prime: {}", alpha_prime);
 
         // Moon's Topocentric Declination
         let delta_small_prime = delta_small_prime(delta_small, x, y, pi, delta_alpha, h);
-        println!("delta_small_prime: {}", delta_small_prime);
-
+        
+        println!("===========");
+        println!("Geocentric Right Ascention: {}", alpha);
+        println!("Geocentric Declination: {}", delta_small);
+        println!("Topcentric Right Ascention: {}", alpha_prime);
+        println!("Topcentric Declination: {}", delta_small_prime);
+        
         moon
     }
 
