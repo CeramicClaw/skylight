@@ -1,11 +1,15 @@
 use crate::*;
 
-//let const DEBUG = false;
+pub const DEBUG: bool = true;
 
 pub struct Moon {
-    date: DateTime,
-    //right_ascention: f64,
-    //delcination: f64
+    pub date: DateTime,
+    pub horiz_parallax: f64, // degrees
+    pub geo_r_asc: f64, // degrees
+    pub geo_dec: f64, // degrees
+    pub topo_r_asc: f64, // degrees
+    pub topo_dec: f64, // degrees
+    pub semidiameter: f64, // degrees
 }
 
 impl std::fmt::Display for Moon {
@@ -17,15 +21,27 @@ impl std::fmt::Display for Moon {
 }
 
 impl Moon {
+
+    pub fn new_moon() -> Moon {
+        Moon {
+            date: new_day(2000, Month::JANUARY, 1),
+            horiz_parallax: 0.0,
+            geo_r_asc: 0.0,
+            geo_dec: 0.0,
+            topo_r_asc: 0.0,
+            topo_dec: 0.0,
+            semidiameter: 0.0,
+        }
+    }
+
     /// Get a characteristic moon at a given DateTime and observer lat/lon
     /// Assumes a 1m observation height
-    pub fn new_moon(date: DateTime, obs_lat: f64, obs_lon: f64) -> Moon {
+    pub fn set(&mut self, date: DateTime, obs_lat: f64, obs_lon: f64) {
         let obs_elev = 1.0; // meters
-        let mut moon = Moon::default();
-        moon.date = date;
+        self.date = date;
         // Julian dates
-        let jd = julian_day(&moon.date);
-        let jde = julian_ephemeris_day(jd, moon.date.delta_t);
+        let jd = julian_day(&self.date);
+        let jde = julian_ephemeris_day(jd, self.date.delta_t);
         let jc = julian_century(jd);
         let jce = julian_ephemeris_century(jde);
         let jme = jce / 10.0;
@@ -36,37 +52,26 @@ impl Moon {
         let m_prime = moon_mean_anomaly(jce);
         let f = moon_arg_of_latitude(jce);
         let l_prime = moon_mean_longitude(jce);
-        println!("JD: {}\nJCE: {}\nD: {}\nM: {}\nM': {}\nF: {}\nL': {}", jd, jce, d, m, m_prime, f, l_prime);
         let l_term = l_term(d, m, m_prime, f, jce);
-        println!("l_term: {}", l_term);
         let r_term = r_term(d, m, m_prime, f, jce);
-        println!("r_term: {}", r_term);
         let b_term = b_term(d, m, m_prime, f, jce);
-        println!("b_term: {}", b_term);
 
         // Delta l and Delta b
         let a1 = a1(jce); // Eq. 18 (degrees)
         let a2 = a2(jce); // Eq. 19 (degrees)
         let a3 = a3(jce); // Eq. 20 (degrees)
-        println!("a1: {}\na2: {}\na3: {}", a1, a2, a3);
         let delta_l = delta_l(a1, a2, l_prime, f);
-        println!("l + delta_l: {}", l_term + delta_l);
         let delta_b = delta_b(a1, a3, l_prime, m_prime, f);
-        println!("b + delta_b: {}", b_term + delta_b);
 
         // Moon longitude and latitude (degrees)
         let moon_lon = moon_longitude(l_prime, l_term, delta_l);
-        println!("lambda prime: {}", moon_lon);
         let beta = moon_latitutde(b_term, delta_b);
-        println!("Beta: {}", beta);
 
         // Moon distance from center of Earth
         let delta = moon_distance(r_term);
-        println!("Delta: {}", delta);
 
         // Horizontal parallax
         let pi = moon_horizontal_parallax(delta); // Radians
-        println!("Pi: {}", pi);
 
         // Nutation in Longitude and Obliquity
         let x0 = x0(jce);
@@ -75,59 +80,97 @@ impl Moon {
         let x3 = x3(jce);
         let x4 = x4(jce);
         let delta_psi = delta_psi(jce, x0, x1, x2, x3, x4);
-        println!("delta_psi: {}", delta_psi);
         let delta_epsilon = delta_epsilon(jce, x0, x1, x2, x3, x4);
-        println!("delta_epsilon: {}", delta_epsilon);
 
         // True Obliquity of the Ecliptic
         let epsilon = epsilon(jme, delta_epsilon);
-        println!("epsilon: {}", epsilon);
         
         // Apparent Moon Longitude
         let lambda = moon_lon + delta_psi; // Eq. 38
-        println!("lambda: {}", lambda);
 
         // Apparent Sidereal Time at Greenwich
         let eta0 = eta0(jd, jc);
         let eta = eta(eta0, delta_psi, epsilon);
-        println!("eta: {}", eta);
 
         // Moon's Right Ascension
         let alpha = alpha(lambda, epsilon, beta);
-        
 
         // Moon's Geocentric Declination
         let delta_small = delta_small(beta, epsilon, lambda);
-        
 
         // Observer Local Hour Angle
         let h = obs_local_angle(eta, obs_lon, alpha);
-        println!("H: {}", h);
 
         // Moon's Topocentric Right Ascention
         let u = u(obs_lat); // Radians
         let x = x(u, obs_lat, obs_elev);
         let y = y(u, obs_lat, obs_elev);
         let delta_alpha = delta_alpha(x, pi, h, delta_small);
-        println!("delta_alpha: {}", delta_alpha);
         let alpha_prime = alpha + delta_alpha; // Eq. 48
 
         // Moon's Topocentric Declination
         let delta_small_prime = delta_small_prime(delta_small, x, y, pi, delta_alpha, h);
         
-        println!("===========");
-        println!("Geocentric Right Ascention: {}", alpha);
-        println!("Geocentric Declination: {}", delta_small);
-        println!("Topcentric Right Ascention: {}", alpha_prime);
-        println!("Topcentric Declination: {}", delta_small_prime);
-        
-        moon
-    }
+        // Topocentric Local Hour (degrees)
+        let h_prime = h - delta_alpha; // Eq. 50
 
-    fn default() -> Moon {
-        Moon {
-            date: new_day(2000, Month::JANUARY, 1),
-        }
+        // Topocentric Elevation Angle Without Correction
+        let e0 = e0(obs_lat, delta_small_prime, h_prime);
+
+        // Atmospheric Refraction correction
+        let p = 1000.0; // Mb
+        let t = 11.0; // Degrees C
+        let delta_e = delta_e(p, t, e0);
+        let e = e0 + delta_e;
+        let theta_m = 90.0 - e; // Eq. 54
+        let gamma = gamma(h_prime, obs_lat, delta_small_prime);
+        
+        // Topocentric Azimuth
+        let phi_m = (gamma + 180.0) % 360.0;
+
+        // Radius of Moon's Disk
+        let r_m = r_m(e, pi, delta);
+
+        if DEBUG {
+            println!("JD: {}\nJCE: {}\nD: {}\nM: {}\nM': {}\nF: {}\nL': {}", jd, jce, d, m, m_prime, f, l_prime);
+            println!("l_term: {}", l_term);
+            println!("r_term: {}", r_term);
+            println!("b_term: {}", b_term);
+            println!("a1: {}\na2: {}\na3: {}", a1, a2, a3);
+            println!("l + delta_l: {}", l_term + delta_l);
+            println!("b + delta_b: {}", b_term + delta_b);
+            println!("lambda prime: {}", moon_lon);
+            println!("Beta: {}", beta);
+            println!("Delta: {}", delta);
+            println!("Pi: {}", pi);
+            println!("delta_psi: {}", delta_psi);
+            println!("delta_epsilon: {}", delta_epsilon);
+            println!("epsilon: {}", epsilon);
+            println!("lambda: {}", lambda);
+            println!("eta: {}", eta);
+            println!("H: {}", h);
+            println!("delta_alpha: {}", delta_alpha);
+            println!("h_prime {}", h_prime);
+            println!("delta_e {}", delta_e);
+            println!("e {}", e);
+            println!("theta_m {}", theta_m);
+            println!("gamma {}", gamma);
+            println!("phi_m {}", phi_m);
+            println!("===========");
+            println!("Horizontal parallax: {}", pi.to_degrees());
+            println!("Geocentric Right Ascention: {}", alpha);
+            println!("Geocentric Declination: {}", delta_small);
+            println!("Topcentric Right Ascention: {}", alpha_prime);
+            println!("Topcentric Declination: {}", delta_small_prime);
+            println!("Moon Apparent Radius: {}", r_m);
+        }        
+
+        self.horiz_parallax = pi.to_degrees();
+        self.geo_r_asc = alpha;
+        self.geo_dec = delta_small;
+        self.topo_r_asc = alpha_prime;
+        self.topo_dec = delta_small_prime;
+        self.semidiameter = r_m;
     }
 }
 
@@ -677,4 +720,66 @@ fn delta_alpha(x: f64, pi: f64, h: f64, delta_small: f64) -> f64 {
 fn delta_small_prime(delta_small: f64, x: f64, y: f64, pi: f64, delta_alpha: f64, h: f64) -> f64 {
     (((delta_small.to_radians().sin() - y*pi.sin())*delta_alpha.to_radians().cos()).atan2(
         delta_small.to_radians().cos() - x*pi.sin()*h.to_radians().cos())).to_degrees()
+}
+
+// Eq. 51 (degrees)
+fn e0(obs_lat: f64, delta_small_prime: f64, h_prime: f64) -> f64 {
+    (obs_lat.to_radians().sin() * delta_small_prime.to_radians().sin() +
+        obs_lat.to_radians().cos() * delta_small_prime.to_radians().cos()*h_prime.to_radians().cos()).asin().to_degrees()
+}
+
+// Eq. 52 (degrees)
+// p: pressure in millibars
+// t: temperature in degrees C
+fn delta_e(p: f64, t: f64, e0: f64) -> f64 {
+    (p/1010.0) * (283.0/(273.0 + t)) * 1.02 / (60.0 * ((e0 + 10.3 / (e0 + 5.11))).to_radians().tan())
+}
+
+// Eq. 55 (degrees)
+fn gamma(h_prime: f64, obs_lat: f64, delta_small_prime: f64) -> f64 {
+    let mut lambda = h_prime.to_radians().sin().atan2(
+        h_prime.to_radians().cos()*obs_lat.to_radians().sin() - 
+        delta_small_prime.to_radians().tan()*obs_lat.to_radians().cos()).to_degrees();
+    lambda = lambda % 360.0;
+    if lambda < 0.0 {
+        lambda += 360.0;
+    }
+    lambda
+}
+
+// Eq. 59 (degrees)
+fn r_m(e: f64, pi: f64, delta: f64) -> f64 {
+    358473400.0 * (1.0 + e.to_radians().sin() * pi.sin()) / (3600.0 * delta)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::Month;
+
+    #[test]
+    fn test() { // Values from 1998 Astronomical Almanac
+        let mut moon = Moon::new_moon();
+        moon.set(new_time_t(1998, Month::JANUARY, 5, 0, 0, 0, 0.0), 0.0, 0.0);
+        assert!((0.98754 - moon.horiz_parallax).abs() < 0.001);
+        assert!((0.6908 - moon.geo_dec).abs() < 0.003);
+        moon.set(new_time_t(1998, Month::JANUARY, 10, 0, 0, 0, 0.0), 0.0, 0.0);
+        assert!((0.962467 - moon.horiz_parallax).abs() < 0.001);
+        assert!((17.649167 - moon.geo_dec).abs() < 0.003);
+        moon.set(new_time_t(1998, Month::FEBRUARY, 1, 0, 0, 0, 0.0), 0.0, 0.0);
+        assert!((1.000856 - moon.horiz_parallax).abs() < 0.001);
+        assert!((-0.692 - moon.geo_dec).abs() < 0.003);
+        moon.set(new_time_t(1998, Month::FEBRUARY, 5, 0, 0, 0, 0.0), 0.0, 0.0);
+        assert!((0.96860278 - moon.horiz_parallax).abs() < 0.001);
+        assert!((14.98194 - moon.geo_dec).abs() < 0.003);
+        moon.set(new_time_t(1998, Month::MAY, 17, 0, 0, 0, 0.0), 0.0, 0.0);
+        assert!((0.95081389 - moon.horiz_parallax).abs() < 0.001);
+        assert!((-17.3805 - moon.geo_dec).abs() < 0.003);
+        moon.set(new_time_t(1998, Month::AUGUST, 16, 0, 0, 0, 0.0), 0.0, 0.0);
+        assert!((0.976783 - moon.horiz_parallax).abs() < 0.001);
+        assert!((16.50472 - moon.geo_dec).abs() < 0.003);
+        moon.set(new_time_t(1998, Month::AUGUST, 20, 0, 0, 0, 0.0), 0.0, 0.0);
+        assert!((0.944694 - moon.horiz_parallax).abs() < 0.001);
+        assert!((17.151 - moon.geo_dec).abs() < 0.003);
+    }
 }

@@ -111,6 +111,18 @@ pub fn new_time(year: i32, month: Month, day: u32, hour: u32, minute: u32, secon
     }
 }
 
+pub fn new_time_t(year: i32, month: Month, day: u32, hour: u32, minute: u32, second: u32, delta_t: f64) -> DateTime {
+    DateTime {
+        year,
+        month,
+        day,
+        hour,
+        minute,
+        second,
+        delta_t,
+    }
+}
+
 /// Eq. 4
 pub fn julian_day(date: &DateTime) -> f64 {
     let mut y = date.year as f64;
@@ -156,21 +168,21 @@ mod tests {
 
     #[test]
     fn test() { // Table A4.1 test values
-        assert_eq!(2451545.0, julian_day(new_time(2000, Month::JANUARY, 1, 12, 0, 0)));
-        assert_eq!(2451179.5, julian_day(new_time(1999, Month::JANUARY, 1, 0, 0, 0)));
-        assert_eq!(2446822.5, julian_day(new_time(1987, Month::JANUARY, 27, 0, 0, 0)));
-        assert_eq!(2446966.0, julian_day(new_time(1987, Month::JUNE, 19, 12, 0, 0)));
-        assert_eq!(2447187.5, julian_day(new_time(1988, Month::JANUARY, 27, 0, 0, 0)));
-        assert_eq!(2447332.0, julian_day(new_time(1988, Month::JUNE, 19, 12, 0, 0)));
-        assert_eq!(2415020.5, julian_day(new_time(1900, Month::JANUARY, 1, 0, 0, 0)));
-        assert_eq!(2305447.5, julian_day(new_time(1600, Month::JANUARY, 1, 0, 0, 0)));
-        assert_eq!(2305812.5, julian_day(new_time(1600, Month::DECEMBER, 31, 0, 0, 0)));
-        assert_eq!(2026871.8, julian_day(new_time(837, Month::APRIL, 10, 7, 12, 0)));
-        assert_eq!(1676496.5, julian_day(new_time(-123, Month::DECEMBER, 31, 0, 0, 0)));
-        assert_eq!(1676497.5, julian_day(new_time(-122, Month::JANUARY, 1, 0, 0, 0)));
-        assert_eq!(1356001.0, julian_day(new_time(-1000, Month::JULY, 12, 12, 0, 0)));
-        assert_eq!(1355866.5, julian_day(new_time(-1000, Month::FEBRUARY, 29, 0, 0, 0)));
-        assert_eq!(1355671.4, julian_day(new_time(-1001, Month::AUGUST, 17, 21, 36, 0)));
-        assert_eq!(0.0, julian_day(new_time(-4712, Month::JANUARY, 1, 12, 0, 0)));
+        assert_eq!(2451545.0, julian_day(&new_time(2000, Month::JANUARY, 1, 12, 0, 0)));
+        assert_eq!(2451179.5, julian_day(&new_time(1999, Month::JANUARY, 1, 0, 0, 0)));
+        assert_eq!(2446822.5, julian_day(&new_time(1987, Month::JANUARY, 27, 0, 0, 0)));
+        assert_eq!(2446966.0, julian_day(&new_time(1987, Month::JUNE, 19, 12, 0, 0)));
+        assert_eq!(2447187.5, julian_day(&new_time(1988, Month::JANUARY, 27, 0, 0, 0)));
+        assert_eq!(2447332.0, julian_day(&new_time(1988, Month::JUNE, 19, 12, 0, 0)));
+        assert_eq!(2415020.5, julian_day(&new_time(1900, Month::JANUARY, 1, 0, 0, 0)));
+        assert_eq!(2305447.5, julian_day(&new_time(1600, Month::JANUARY, 1, 0, 0, 0)));
+        assert_eq!(2305812.5, julian_day(&new_time(1600, Month::DECEMBER, 31, 0, 0, 0)));
+        assert_eq!(2026871.8, julian_day(&new_time(837, Month::APRIL, 10, 7, 12, 0)));
+        assert_eq!(1676496.5, julian_day(&new_time(-123, Month::DECEMBER, 31, 0, 0, 0)));
+        assert_eq!(1676497.5, julian_day(&new_time(-122, Month::JANUARY, 1, 0, 0, 0)));
+        assert_eq!(1356001.0, julian_day(&new_time(-1000, Month::JULY, 12, 12, 0, 0)));
+        assert_eq!(1355866.5, julian_day(&new_time(-1000, Month::FEBRUARY, 29, 0, 0, 0)));
+        assert_eq!(1355671.4, julian_day(&new_time(-1001, Month::AUGUST, 17, 21, 36, 0)));
+        assert_eq!(0.0, julian_day(&new_time(-4712, Month::JANUARY, 1, 12, 0, 0)));
     }
 }
