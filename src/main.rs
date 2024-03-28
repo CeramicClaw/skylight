@@ -1,14 +1,13 @@
 use skylight::*;
 use skylight::moon::*;
+use skylight::sun::*;
 
 fn main() {
-    //let mut t = new_time(2009, Month::JULY, 22, 1, 33, 0);
-    let mut t = new_time(1998, Month::FEBRUARY, 6, 0, 0, 0);
-    t.delta_t = 66.4;
-    //t.delta_t = 0.0;
-    let mut moon = Moon::new_moon();
-    moon.set(t, 24.61167, 143.36167);
-    println!("{}", moon);
+    let t = new_time_t(2003, Month::OCTOBER, 17, 19, 30, 30, 67.0);
+    //let mut moon = Moon::new_moon();
+    //moon.set(t, 24.61167, 143.36167);
+    let mut sun = Sun::new_day();
+    sun.set(t);
+    println!("{}", sun);
     // Page ~200 has the moon positions
-    //println!("{}", Moon::new_moon(t, 0.0, 0.0));
 }

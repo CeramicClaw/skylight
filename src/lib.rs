@@ -1,6 +1,7 @@
 use core::fmt;
 
 pub mod moon;
+pub mod sun;
 
 pub const DELTA_T: f64 = 69.0; // Default delta_t value as of January 2024
 
@@ -70,7 +71,7 @@ impl DateTime {
         self.day as f64 + 
         self.hour as f64 / 24.0 + // Hours in a day
         self.minute as f64 / 1440.0 + // Minutes in a day
-        self.second as f64 / 3600.0 // Seconds in a day
+        self.second as f64 / 86400.0 // Seconds in a day)
     }
 }
 
