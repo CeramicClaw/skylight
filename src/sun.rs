@@ -1,15 +1,30 @@
 use crate::*;
 
-pub const DEBUG: bool = true;
+pub const DEBUG: bool = false;
 
 pub struct Sun {
     pub date: DateTime,
+    pub horiz_parallax_deg: f64,
+    pub geo_r_asc_deg: f64,
+    pub geo_dec_deg: f64,
+    pub topo_r_asc_deg: f64,
+    pub topo_dec_deg: f64,
 }
 
 impl std::fmt::Display for Sun {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}",
+        write!(f, "{}\
+        \nHorizontal Parallax: {:.2}\u{2033}\
+        \nGeocentric Right Ascention: {}\
+        \nGeocentric Declination: {}\
+        \nTopocentric Right Ascention: {}\
+        \nTopocentric Declination: {}",
         self.date,
+        self.horiz_parallax_deg * 3600.0,
+        deg2hms(self.geo_r_asc_deg),
+        deg2dms(self.geo_dec_deg),
+        deg2hms(self.topo_r_asc_deg),
+        deg2dms(self.topo_dec_deg),
         )
     }
 }
@@ -18,6 +33,11 @@ impl Sun {
     pub fn new_day() -> Sun {
         Sun {
             date: new_day(2000, Month::JANUARY, 1),
+            horiz_parallax_deg: 0.0,
+            geo_r_asc_deg: 0.0,
+            geo_dec_deg: 0.0,
+            topo_r_asc_deg: 0.0,
+            topo_dec_deg: 0.0,
         }
     }
 
@@ -73,10 +93,10 @@ impl Sun {
         // Apparent sidereal tim eat Greenwich (degrees)
         let nu_deg = nu(jd, jc, delta_psi, epsilon_deg);
 
-        // Sun right ascention (degrees)
+        // Geocentric right ascention (degrees)
         let alpha_deg =  alpha(lambda_deg, epsilon_deg, beta_deg);
 
-        // Geocentric sun declination (degrees)
+        // Geocentric declination (degrees)
         let delta_deg = delta(beta_deg, epsilon_deg, lambda_deg);
 
         // Observer local hour (degrees)
@@ -137,6 +157,12 @@ impl Sun {
             println!("theta_small: {}", theta_small_deg);
             println!("phi: {}", phi_deg);
         }
+
+        self.horiz_parallax_deg = xi_deg;
+        self.geo_r_asc_deg = alpha_deg;
+        self.geo_dec_deg = delta_deg;
+        self.topo_r_asc_deg = alpha_prime_deg;
+        self.topo_dec_deg = delta_prime_deg; 
     }
 }
 
@@ -532,4 +558,36 @@ fn gamma(h_prime_deg: f64, obs_lat_deg: f64, delta_prime_deg: f64) -> f64 {
         lambda += 360.0;
     }
     lambda
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::Month;
+
+    #[test]
+    fn test() { // Values from 1998 Astronomical Almanac
+        let mut sun = Sun::new_day();
+        sun.set(new_day(1998, Month::JANUARY, 5), 0.0, 0.0, 0.0, 0.0, 0.0);
+        assert!((hms(19, 2, 41.02).decimal() - sun.geo_r_asc_deg).abs() < 0.001);
+        println!("{}", dms(-22, 39, 19.4).decimal());
+        assert!((dms(-22, 39, 19.4).decimal() - sun.geo_dec_deg).abs() < 0.001);
+        assert!((dms(0, 0, 8.94).decimal() - sun.horiz_parallax_deg).abs() < 0.001);    
+        sun.set(new_day(1998, Month::JANUARY, 24), 0.0, 0.0, 0.0, 0.0, 0.0);
+        assert!((hms(20, 24, 23.53).decimal() - sun.geo_r_asc_deg).abs() < 0.001);
+        assert!((dms(-19, 18, 14.7).decimal() - sun.geo_dec_deg).abs() < 0.001);
+        assert!((dms(0, 0, 8.93).decimal() - sun.horiz_parallax_deg).abs() < 0.001);
+        sun.set(new_day(1998, Month::MARCH, 21), 0.0, 0.0, 0.0, 0.0, 0.0);
+        assert!((hms(0, 0, 37.12).decimal() - sun.geo_r_asc_deg).abs() < 0.001);
+        assert!((dms(0, 4, 1.8).decimal() - sun.geo_dec_deg).abs() < 0.001);
+        assert!((dms(0, 0, 8.83).decimal() - sun.horiz_parallax_deg).abs() < 0.001);
+        sun.set(new_day(1998, Month::JUNE, 5), 0.0, 0.0, 0.0, 0.0, 0.0);
+        assert!((hms(4, 51, 14.12).decimal() - sun.geo_r_asc_deg).abs() < 0.001);
+        assert!((dms(22, 29, 47.4).decimal() - sun.geo_dec_deg).abs() < 0.001);
+        assert!((dms(0, 0, 8.67).decimal() - sun.horiz_parallax_deg).abs() < 0.001);
+        sun.set(new_day(1998, Month::SEPTEMBER, 24), 0.0, 0.0, 0.0, 0.0, 0.0);
+        assert!((hms(12, 2, 44.99).decimal() - sun.geo_r_asc_deg).abs() < 0.001);
+        assert!((dms(0, -17, 52.0).decimal() - sun.geo_dec_deg).abs() < 0.001);
+        assert!((dms(0, 0, 8.77).decimal() - sun.horiz_parallax_deg).abs() < 0.001);
+    }
 }

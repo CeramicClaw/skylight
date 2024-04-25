@@ -1,21 +1,31 @@
 use crate::*;
 
-pub const DEBUG: bool = true;
+pub const DEBUG: bool = false;
 
 pub struct Moon {
     pub date: DateTime,
-    pub horiz_parallax: f64, // degrees
-    pub geo_r_asc: f64, // degrees
-    pub geo_dec: f64, // degrees
-    pub topo_r_asc: f64, // degrees
-    pub topo_dec: f64, // degrees
-    pub semidiameter: f64, // degrees
+    pub horiz_parallax_deg: f64,
+    pub geo_r_asc_deg: f64,
+    pub geo_dec_deg: f64,
+    pub topo_r_asc_deg: f64,
+    pub topo_dec_deg: f64,
+    pub semidiameter_deg: f64, // degrees
 }
 
 impl std::fmt::Display for Moon {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}",
+        write!(f, "{}\
+        \nHorizontal Parallax: {}\
+        \nGeocentric Right Ascention: {}\
+        \nGeocentric Declination: {}\
+        \nTopocentric Right Ascention: {}\
+        \nTopocentric Declination: {}",
         self.date,
+        deg2dms(self.horiz_parallax_deg),
+        deg2hms(self.geo_r_asc_deg),
+        deg2dms(self.geo_dec_deg),
+        deg2hms(self.topo_r_asc_deg),
+        deg2dms(self.topo_dec_deg),
         )
     }
 }
@@ -25,12 +35,12 @@ impl Moon {
     pub fn new_moon() -> Moon {
         Moon {
             date: new_day(2000, Month::JANUARY, 1),
-            horiz_parallax: 0.0,
-            geo_r_asc: 0.0,
-            geo_dec: 0.0,
-            topo_r_asc: 0.0,
-            topo_dec: 0.0,
-            semidiameter: 0.0,
+            horiz_parallax_deg: 0.0,
+            geo_r_asc_deg: 0.0,
+            geo_dec_deg: 0.0,
+            topo_r_asc_deg: 0.0,
+            topo_dec_deg: 0.0,
+            semidiameter_deg: 0.0,
         }
     }
 
@@ -165,12 +175,12 @@ impl Moon {
             println!("Moon Apparent Radius: {}", r_m);
         }        
 
-        self.horiz_parallax = pi.to_degrees();
-        self.geo_r_asc = alpha;
-        self.geo_dec = delta_small;
-        self.topo_r_asc = alpha_prime;
-        self.topo_dec = delta_small_prime;
-        self.semidiameter = r_m;
+        self.horiz_parallax_deg = pi.to_degrees();
+        self.geo_r_asc_deg = alpha;
+        self.geo_dec_deg = delta_small;
+        self.topo_r_asc_deg = alpha_prime;
+        self.topo_dec_deg = delta_small_prime;
+        self.semidiameter_deg = r_m;
     }
 }
 
@@ -760,26 +770,26 @@ mod tests {
     #[test]
     fn test() { // Values from 1998 Astronomical Almanac
         let mut moon = Moon::new_moon();
-        moon.set(new_time_t(1998, Month::JANUARY, 5, 0, 0, 0, 0.0), 0.0, 0.0);
-        assert!((0.98754 - moon.horiz_parallax).abs() < 0.001);
-        assert!((0.6908 - moon.geo_dec).abs() < 0.003);
-        moon.set(new_time_t(1998, Month::JANUARY, 10, 0, 0, 0, 0.0), 0.0, 0.0);
-        assert!((0.962467 - moon.horiz_parallax).abs() < 0.001);
-        assert!((17.649167 - moon.geo_dec).abs() < 0.003);
-        moon.set(new_time_t(1998, Month::FEBRUARY, 1, 0, 0, 0, 0.0), 0.0, 0.0);
-        assert!((1.000856 - moon.horiz_parallax).abs() < 0.001);
-        assert!((-0.692 - moon.geo_dec).abs() < 0.003);
-        moon.set(new_time_t(1998, Month::FEBRUARY, 5, 0, 0, 0, 0.0), 0.0, 0.0);
-        assert!((0.96860278 - moon.horiz_parallax).abs() < 0.001);
-        assert!((14.98194 - moon.geo_dec).abs() < 0.003);
-        moon.set(new_time_t(1998, Month::MAY, 17, 0, 0, 0, 0.0), 0.0, 0.0);
-        assert!((0.95081389 - moon.horiz_parallax).abs() < 0.001);
-        assert!((-17.3805 - moon.geo_dec).abs() < 0.003);
-        moon.set(new_time_t(1998, Month::AUGUST, 16, 0, 0, 0, 0.0), 0.0, 0.0);
-        assert!((0.976783 - moon.horiz_parallax).abs() < 0.001);
-        assert!((16.50472 - moon.geo_dec).abs() < 0.003);
-        moon.set(new_time_t(1998, Month::AUGUST, 20, 0, 0, 0, 0.0), 0.0, 0.0);
-        assert!((0.944694 - moon.horiz_parallax).abs() < 0.001);
-        assert!((17.151 - moon.geo_dec).abs() < 0.003);
+        moon.set(new_time_t(1998, Month::JANUARY, 5, 0, 0, 0.0, 0.0), 0.0, 0.0);
+        assert!((0.98754 - moon.horiz_parallax_deg).abs() < 0.001);
+        assert!((0.6908 - moon.geo_dec_deg).abs() < 0.003);
+        moon.set(new_time_t(1998, Month::JANUARY, 10, 0, 0, 0.0, 0.0), 0.0, 0.0);
+        assert!((0.962467 - moon.horiz_parallax_deg).abs() < 0.001);
+        assert!((17.649167 - moon.geo_dec_deg).abs() < 0.003);
+        moon.set(new_time_t(1998, Month::FEBRUARY, 1, 0, 0, 0.0, 0.0), 0.0, 0.0);
+        assert!((1.000856 - moon.horiz_parallax_deg).abs() < 0.001);
+        assert!((-0.692 - moon.geo_dec_deg).abs() < 0.003);
+        moon.set(new_time_t(1998, Month::FEBRUARY, 5, 0, 0, 0.0, 0.0), 0.0, 0.0);
+        assert!((0.96860278 - moon.horiz_parallax_deg).abs() < 0.001);
+        assert!((14.98194 - moon.geo_dec_deg).abs() < 0.003);
+        moon.set(new_time_t(1998, Month::MAY, 17, 0, 0, 0.0, 0.0), 0.0, 0.0);
+        assert!((0.95081389 - moon.horiz_parallax_deg).abs() < 0.001);
+        assert!((-17.3805 - moon.geo_dec_deg).abs() < 0.003);
+        moon.set(new_time_t(1998, Month::AUGUST, 16, 0, 0, 0.0, 0.0), 0.0, 0.0);
+        assert!((0.976783 - moon.horiz_parallax_deg).abs() < 0.001);
+        assert!((16.50472 - moon.geo_dec_deg).abs() < 0.003);
+        moon.set(new_time_t(1998, Month::AUGUST, 20, 0, 0, 0.0, 0.0), 0.0, 0.0);
+        assert!((0.944694 - moon.horiz_parallax_deg).abs() < 0.001);
+        assert!((17.151 - moon.geo_dec_deg).abs() < 0.003);
     }
 }

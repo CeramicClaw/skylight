@@ -1,5 +1,5 @@
 # skylight
-Plotting celestial objects in the sky
+Plotting celestial objects in the sky.
 
 I'm using the following papers for calculating the position of celestial objects:
 ## Moon
