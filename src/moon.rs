@@ -2,56 +2,14 @@ use crate::*;
 
 pub const DEBUG: bool = false;
 
-pub struct Moon {
-    pub date: DateTime,
-    pub horiz_parallax_deg: f64,
-    pub geo_r_asc_deg: f64,
-    pub geo_dec_deg: f64,
-    pub topo_r_asc_deg: f64,
-    pub topo_dec_deg: f64,
-    pub semidiameter_deg: f64, // degrees
-}
-
-impl std::fmt::Display for Moon {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}\
-        \nHorizontal Parallax: {}\
-        \nGeocentric Right Ascention: {}\
-        \nGeocentric Declination: {}\
-        \nTopocentric Right Ascention: {}\
-        \nTopocentric Declination: {}",
-        self.date,
-        deg2dms(self.horiz_parallax_deg),
-        deg2hms(self.geo_r_asc_deg),
-        deg2dms(self.geo_dec_deg),
-        deg2hms(self.topo_r_asc_deg),
-        deg2dms(self.topo_dec_deg),
-        )
-    }
-}
+pub struct Moon;
 
 impl Moon {
-
-    pub fn new_moon() -> Moon {
-        Moon {
-            date: new_day(2000, Month::JANUARY, 1),
-            horiz_parallax_deg: 0.0,
-            geo_r_asc_deg: 0.0,
-            geo_dec_deg: 0.0,
-            topo_r_asc_deg: 0.0,
-            topo_dec_deg: 0.0,
-            semidiameter_deg: 0.0,
-        }
-    }
-
-    /// Get a characteristic moon at a given DateTime and observer lat/lon
-    /// Assumes a 1m observation height
-    pub fn set(&mut self, date: DateTime, obs_lat: f64, obs_lon: f64) {
-        let obs_elev = 1.0; // meters
-        self.date = date;
+    // Get a characteristic Sun at a given DateTime, observer lat/lon, elevation, pressure, and temperature
+    pub fn new_moon(placetime: &PlaceTime) -> CelestialObject {
         // Julian dates
-        let jd = julian_day(&self.date);
-        let jde = julian_ephemeris_day(jd, self.date.delta_t);
+        let jd = julian_day(&placetime.date);
+        let jde = julian_ephemeris_day(jd, placetime.date.delta_t);
         let jc = julian_century(jd);
         let jce = julian_ephemeris_century(jde);
         let jme = jce / 10.0;
@@ -109,12 +67,12 @@ impl Moon {
         let delta_small = delta_small(beta, epsilon, lambda);
 
         // Observer Local Hour Angle
-        let h = obs_local_angle(eta, obs_lon, alpha);
+        let h = obs_local_angle(eta, placetime.obs_lon_deg, alpha);
 
         // Moon's Topocentric Right Ascention
-        let u = u(obs_lat); // Radians
-        let x = x(u, obs_lat, obs_elev);
-        let y = y(u, obs_lat, obs_elev);
+        let u = u(placetime.obs_lat_deg); // Radians
+        let x = x(u, placetime.obs_lat_deg, placetime.obs_elev_m);
+        let y = y(u, placetime.obs_lat_deg, placetime.obs_elev_m);
         let delta_alpha = delta_alpha(x, pi, h, delta_small);
         let alpha_prime = alpha + delta_alpha; // Eq. 48
 
@@ -125,15 +83,13 @@ impl Moon {
         let h_prime = h - delta_alpha; // Eq. 50
 
         // Topocentric Elevation Angle Without Correction
-        let e0 = e0(obs_lat, delta_small_prime, h_prime);
+        let e0 = e0(placetime.obs_lat_deg, delta_small_prime, h_prime);
 
         // Atmospheric Refraction correction
-        let p = 1000.0; // Mb
-        let t = 11.0; // Degrees C
-        let delta_e = delta_e(p, t, e0);
+        let delta_e = delta_e(placetime.p_mbar, placetime.t_deg_c, e0);
         let e = e0 + delta_e;
         let theta_m = 90.0 - e; // Eq. 54
-        let gamma = gamma(h_prime, obs_lat, delta_small_prime);
+        let gamma = gamma(h_prime, placetime.obs_lat_deg, delta_small_prime);
         
         // Topocentric Azimuth
         let phi_m = (gamma + 180.0) % 360.0;
@@ -175,12 +131,18 @@ impl Moon {
             println!("Moon Apparent Radius: {}", r_m);
         }        
 
-        self.horiz_parallax_deg = pi.to_degrees();
-        self.geo_r_asc_deg = alpha;
-        self.geo_dec_deg = delta_small;
-        self.topo_r_asc_deg = alpha_prime;
-        self.topo_dec_deg = delta_small_prime;
-        self.semidiameter_deg = r_m;
+        return CelestialObject {
+            date: placetime.date,
+            horiz_parallax_deg: pi.to_degrees(),
+            geo_r_asc_deg: alpha,
+            geo_dec_deg: delta_small,
+            topo_r_asc_deg: alpha_prime,
+            topo_dec_deg: delta_small_prime,
+            semidiameter_deg: r_m,
+            zenith_deg: theta_m,
+            azimuth_deg: phi_m,
+            celestial: Celestial::MOON,
+        };
     }
 }
 
@@ -769,26 +731,32 @@ mod tests {
 
     #[test]
     fn test() { // Values from 1998 Astronomical Almanac
-        let mut moon = Moon::new_moon();
-        moon.set(new_time_t(1998, Month::JANUARY, 5, 0, 0, 0.0, 0.0), 0.0, 0.0);
+        let mut pt = PlaceTime::new(&new_day_delta(1998, Month::JANUARY, 5, 0.0), 0.0, 0.0, 0.0, 0.0, 0.0);
+        let mut moon = Moon::new_moon(&pt);
         assert!((0.98754 - moon.horiz_parallax_deg).abs() < 0.001);
         assert!((0.6908 - moon.geo_dec_deg).abs() < 0.003);
-        moon.set(new_time_t(1998, Month::JANUARY, 10, 0, 0, 0.0, 0.0), 0.0, 0.0);
+        pt.change_time(&new_day_delta(1998, Month::JANUARY, 10, 0.0));
+        moon = Moon::new_moon(&pt);
         assert!((0.962467 - moon.horiz_parallax_deg).abs() < 0.001);
         assert!((17.649167 - moon.geo_dec_deg).abs() < 0.003);
-        moon.set(new_time_t(1998, Month::FEBRUARY, 1, 0, 0, 0.0, 0.0), 0.0, 0.0);
+        pt.change_time(&new_day_delta(1998, Month::FEBRUARY, 1, 0.0));
+        moon = Moon::new_moon(&pt);
         assert!((1.000856 - moon.horiz_parallax_deg).abs() < 0.001);
         assert!((-0.692 - moon.geo_dec_deg).abs() < 0.003);
-        moon.set(new_time_t(1998, Month::FEBRUARY, 5, 0, 0, 0.0, 0.0), 0.0, 0.0);
+        pt.change_time(&new_day_delta(1998, Month::FEBRUARY, 5, 0.0));
+        moon = Moon::new_moon(&pt);
         assert!((0.96860278 - moon.horiz_parallax_deg).abs() < 0.001);
         assert!((14.98194 - moon.geo_dec_deg).abs() < 0.003);
-        moon.set(new_time_t(1998, Month::MAY, 17, 0, 0, 0.0, 0.0), 0.0, 0.0);
+        pt.change_time(&new_day_delta(1998, Month::MAY, 17, 0.0));
+        moon = Moon::new_moon(&pt);
         assert!((0.95081389 - moon.horiz_parallax_deg).abs() < 0.001);
         assert!((-17.3805 - moon.geo_dec_deg).abs() < 0.003);
-        moon.set(new_time_t(1998, Month::AUGUST, 16, 0, 0, 0.0, 0.0), 0.0, 0.0);
+        pt.change_time(&new_day_delta(1998, Month::AUGUST, 16, 0.0));
+        moon = Moon::new_moon(&pt);
         assert!((0.976783 - moon.horiz_parallax_deg).abs() < 0.001);
         assert!((16.50472 - moon.geo_dec_deg).abs() < 0.003);
-        moon.set(new_time_t(1998, Month::AUGUST, 20, 0, 0, 0.0, 0.0), 0.0, 0.0);
+        pt.change_time(&new_day_delta(1998, Month::AUGUST, 20, 0.0));
+        moon = Moon::new_moon(&pt);
         assert!((0.944694 - moon.horiz_parallax_deg).abs() < 0.001);
         assert!((17.151 - moon.geo_dec_deg).abs() < 0.003);
     }

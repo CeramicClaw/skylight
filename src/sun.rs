@@ -2,51 +2,14 @@ use crate::*;
 
 pub const DEBUG: bool = false;
 
-pub struct Sun {
-    pub date: DateTime,
-    pub horiz_parallax_deg: f64,
-    pub geo_r_asc_deg: f64,
-    pub geo_dec_deg: f64,
-    pub topo_r_asc_deg: f64,
-    pub topo_dec_deg: f64,
-}
-
-impl std::fmt::Display for Sun {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}\
-        \nHorizontal Parallax: {:.2}\u{2033}\
-        \nGeocentric Right Ascention: {}\
-        \nGeocentric Declination: {}\
-        \nTopocentric Right Ascention: {}\
-        \nTopocentric Declination: {}",
-        self.date,
-        self.horiz_parallax_deg * 3600.0,
-        deg2hms(self.geo_r_asc_deg),
-        deg2dms(self.geo_dec_deg),
-        deg2hms(self.topo_r_asc_deg),
-        deg2dms(self.topo_dec_deg),
-        )
-    }
-}
+pub struct Sun;
 
 impl Sun {
-    pub fn new_day() -> Sun {
-        Sun {
-            date: new_day(2000, Month::JANUARY, 1),
-            horiz_parallax_deg: 0.0,
-            geo_r_asc_deg: 0.0,
-            geo_dec_deg: 0.0,
-            topo_r_asc_deg: 0.0,
-            topo_dec_deg: 0.0,
-        }
-    }
-
-    /// Get a characteristic sun at a given DateTime and observer lat/lon
-    pub fn set(&mut self, date: DateTime, obs_lat_deg: f64, obs_lon_deg: f64, obs_elev_m: f64, p_mbar: f64, t_deg_c: f64) {
-        self.date = date;
+    // Get a characteristic Sun at a given DateTime, observer lat/lon, elevation, pressure, and temperature
+    pub fn new_day(placetime: &PlaceTime) -> CelestialObject {
         // Julian dates
-        let jd = julian_day(&self.date);
-        let jde = julian_ephemeris_day(jd, self.date.delta_t);
+        let jd = julian_day(&placetime.date);
+        let jde = julian_ephemeris_day(jd, placetime.date.delta_t);
         let jc = julian_century(jd);
         let jce = julian_ephemeris_century(jde);
         let jme = jce / 10.0;
@@ -100,37 +63,40 @@ impl Sun {
         let delta_deg = delta(beta_deg, epsilon_deg, lambda_deg);
 
         // Observer local hour (degrees)
-        let h_deg = h(nu_deg, obs_lon_deg, alpha_deg);
+        let h_deg = h(nu_deg, placetime.obs_lon_deg, alpha_deg);
 
         // Equitorial parallax of the sun (degrees)
         let xi_deg = 8.794 / (3600.0 * r_au);
 
         // u-term (radians)
-        let u_rad = (0.99664719 * obs_lat_deg.to_radians().tan()).atan();
+        let u_rad = (0.99664719 * placetime.obs_lat_deg.to_radians().tan()).atan();
 
         // Parallax in the sun right ascention (degrees)
-        let delta_alpha_deg = delta_alpha(u_rad, obs_elev_m, obs_lat_deg, xi_deg, h_deg, delta_deg);
+        let delta_alpha_deg = delta_alpha(u_rad, placetime.obs_elev_m, placetime.obs_lat_deg, xi_deg, h_deg, delta_deg);
 
         // Topocentric sun right ascention (degrees)
         let alpha_prime_deg = alpha_deg + delta_alpha_deg;
 
         // Topocentric sun declination (degrees)
-        let delta_prime_deg = delta_prime(u_rad, obs_elev_m, obs_lat_deg, delta_deg, xi_deg, delta_alpha_deg, h_deg);
+        let delta_prime_deg = delta_prime(u_rad, placetime.obs_elev_m, placetime.obs_lat_deg, delta_deg, xi_deg, delta_alpha_deg, h_deg);
 
         // Topocentric local hour (degrees)
         let h_prime_deg = h_deg - delta_alpha_deg;
 
         // Topocentric elevation angle (degrees)
-        let e_deg = e(obs_lat_deg, delta_prime_deg, h_prime_deg, p_mbar, t_deg_c);
+        let e_deg = e(placetime.obs_lat_deg, delta_prime_deg, h_prime_deg, placetime.p_mbar, placetime.t_deg_c);
 
         // Topocentric zenith angle (degrees)
         let theta_small_deg = 90.0 - e_deg;
 
         // Topocentric astronomer's azimuth angle (degrees)
-        let gamma_deg = gamma(h_prime_deg, obs_lat_deg, delta_prime_deg);
+        let gamma_deg = gamma(h_prime_deg, placetime.obs_lat_deg, delta_prime_deg);
 
         // Topocentric azimuth angle (degrees)
         let phi_deg = (gamma_deg + 180.0) % 360.0;
+
+        // Radius of Sun's disk
+        let r_s_deg = 959.63 / (3600.0 * r_au);
 
         if DEBUG {
             println!("jd: {}", jd);
@@ -158,11 +124,18 @@ impl Sun {
             println!("phi: {}", phi_deg);
         }
 
-        self.horiz_parallax_deg = xi_deg;
-        self.geo_r_asc_deg = alpha_deg;
-        self.geo_dec_deg = delta_deg;
-        self.topo_r_asc_deg = alpha_prime_deg;
-        self.topo_dec_deg = delta_prime_deg; 
+        return CelestialObject {
+            date: placetime.date,
+            horiz_parallax_deg: xi_deg,
+            geo_r_asc_deg: alpha_deg,
+            geo_dec_deg: delta_deg,
+            topo_r_asc_deg: alpha_prime_deg,
+            topo_dec_deg: delta_prime_deg,
+            semidiameter_deg: r_s_deg,
+            zenith_deg: theta_small_deg,
+            azimuth_deg: phi_deg,
+            celestial: Celestial::SUN,
+        };
     }
 }
 
@@ -567,25 +540,29 @@ mod tests {
 
     #[test]
     fn test() { // Values from 1998 Astronomical Almanac
-        let mut sun = Sun::new_day();
-        sun.set(new_day(1998, Month::JANUARY, 5), 0.0, 0.0, 0.0, 0.0, 0.0);
+        let mut pt = PlaceTime::new(&new_day(1998, Month::JANUARY, 5), 0.0, 0.0, 0.0, 0.0, 0.0);
+        let mut sun = Sun::new_day(&pt);
         assert!((hms(19, 2, 41.02).decimal() - sun.geo_r_asc_deg).abs() < 0.001);
         println!("{}", dms(-22, 39, 19.4).decimal());
         assert!((dms(-22, 39, 19.4).decimal() - sun.geo_dec_deg).abs() < 0.001);
-        assert!((dms(0, 0, 8.94).decimal() - sun.horiz_parallax_deg).abs() < 0.001);    
-        sun.set(new_day(1998, Month::JANUARY, 24), 0.0, 0.0, 0.0, 0.0, 0.0);
+        assert!((dms(0, 0, 8.94).decimal() - sun.horiz_parallax_deg).abs() < 0.001);
+        pt.change_time(&new_day(1998, Month::JANUARY, 24));
+        sun = Sun::new_day(&pt);
         assert!((hms(20, 24, 23.53).decimal() - sun.geo_r_asc_deg).abs() < 0.001);
         assert!((dms(-19, 18, 14.7).decimal() - sun.geo_dec_deg).abs() < 0.001);
         assert!((dms(0, 0, 8.93).decimal() - sun.horiz_parallax_deg).abs() < 0.001);
-        sun.set(new_day(1998, Month::MARCH, 21), 0.0, 0.0, 0.0, 0.0, 0.0);
+        pt.change_time(&new_day(1998, Month::MARCH, 21));
+        sun = Sun::new_day(&pt);
         assert!((hms(0, 0, 37.12).decimal() - sun.geo_r_asc_deg).abs() < 0.001);
         assert!((dms(0, 4, 1.8).decimal() - sun.geo_dec_deg).abs() < 0.001);
         assert!((dms(0, 0, 8.83).decimal() - sun.horiz_parallax_deg).abs() < 0.001);
-        sun.set(new_day(1998, Month::JUNE, 5), 0.0, 0.0, 0.0, 0.0, 0.0);
+        pt.change_time(&new_day(1998, Month::JUNE, 5));
+        sun = Sun::new_day(&pt);
         assert!((hms(4, 51, 14.12).decimal() - sun.geo_r_asc_deg).abs() < 0.001);
         assert!((dms(22, 29, 47.4).decimal() - sun.geo_dec_deg).abs() < 0.001);
         assert!((dms(0, 0, 8.67).decimal() - sun.horiz_parallax_deg).abs() < 0.001);
-        sun.set(new_day(1998, Month::SEPTEMBER, 24), 0.0, 0.0, 0.0, 0.0, 0.0);
+        pt.change_time(&new_day(1998, Month::SEPTEMBER, 24));
+        sun = Sun::new_day(&pt);
         assert!((hms(12, 2, 44.99).decimal() - sun.geo_r_asc_deg).abs() < 0.001);
         assert!((dms(0, -17, 52.0).decimal() - sun.geo_dec_deg).abs() < 0.001);
         assert!((dms(0, 0, 8.77).decimal() - sun.horiz_parallax_deg).abs() < 0.001);

@@ -6,11 +6,42 @@ pub mod sun;
 pub const DELTA_T: f64 = 69.0; // Default delta_t value as of January 2024
 
 #[derive(PartialEq, Debug)]
+pub struct CelestialObject {
+    pub date: DateTime,
+    pub horiz_parallax_deg: f64,
+    pub geo_r_asc_deg: f64,
+    pub geo_dec_deg: f64,
+    pub topo_r_asc_deg: f64,
+    pub topo_dec_deg: f64,
+    pub semidiameter_deg: f64,
+    pub zenith_deg: f64,
+    pub azimuth_deg: f64,
+    pub celestial: Celestial,
+}
+
+#[derive(Copy, Clone, Debug, PartialEq)]
+pub enum Celestial {
+    SUN,
+    MOON,
+}
+
+#[derive(Copy, Clone)]
+pub struct PlaceTime {
+    pub date: DateTime,
+    pub obs_lat_deg: f64,
+    pub obs_lon_deg: f64,
+    pub obs_elev_m: f64,
+    pub p_mbar: f64,
+    pub t_deg_c: f64,
+}
+
+#[derive(PartialEq, Debug)]
 pub enum Sign {
     POSITIVE,
     NEGATIVE
 }
 
+#[derive(Copy, Clone, PartialEq, Debug)]
 pub enum Month {
     JANUARY,
     FEBRUARY,
@@ -26,6 +57,7 @@ pub enum Month {
     DECEMBER,
 }
 
+#[derive(Copy, Clone, Debug, PartialEq)]
 pub struct DateTime {
     pub year: i32,
     pub month: Month,
@@ -154,6 +186,47 @@ impl std::fmt::Display for HMS {
     }
 }
 
+impl std::fmt::Display for CelestialObject {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self.celestial {
+            Celestial::MOON => {
+                write!(f, "Moon at {}\
+                \nHorizontal Parallax: {}\
+                \nGeocentric Right Ascention: {}\
+                \nGeocentric Declination: {}\
+                \nTopocentric Right Ascention: {}\
+                \nTopocentric Declination: {}\
+                \nSemidiameter: {:.5}\u{2033}",
+                self.date,
+                deg2dms(self.horiz_parallax_deg),
+                deg2hms(self.geo_r_asc_deg),
+                deg2dms(self.geo_dec_deg),
+                deg2hms(self.topo_r_asc_deg),
+                deg2dms(self.topo_dec_deg),
+                self.semidiameter_deg,
+                )
+            }
+            Celestial::SUN => {
+                write!(f, "Sun at {}\
+                \nHorizontal Parallax: {:.2}\u{2033}\
+                \nGeocentric Right Ascention: {}\
+                \nGeocentric Declination: {}\
+                \nTopocentric Right Ascention: {}\
+                \nTopocentric Declination: {}\
+                \nSemidiameter: {:.5}\u{2033}",
+                self.date,
+                self.horiz_parallax_deg * 3600.0,
+                deg2hms(self.geo_r_asc_deg),
+                deg2dms(self.geo_dec_deg),
+                deg2hms(self.topo_r_asc_deg),
+                deg2dms(self.topo_dec_deg),
+                self.semidiameter_deg,
+                )
+            }
+        }
+    }
+}
+
 pub fn dms(d: i32, m: i32, s: f64) -> DMS {
     let mut sign = Sign::POSITIVE;
     if (d as f64) < 0.0 || (m as f64) < 0.0 || s < 0.0 {
@@ -199,6 +272,18 @@ pub fn new_day(year: i32, month: Month, day: u32) -> DateTime {
     }
 }
 
+pub fn new_day_delta(year: i32, month: Month, day: u32, delta_t: f64) -> DateTime {
+    DateTime {
+        year,
+        month,
+        day,
+        hour: 0,
+        minute: 0,
+        second: 0.0,
+        delta_t: delta_t,
+    }
+}
+
 pub fn new_time(year: i32, month: Month, day: u32, hour: u32, minute: u32, second: f64) -> DateTime {
     DateTime {
         year,
@@ -220,6 +305,28 @@ pub fn new_time_t(year: i32, month: Month, day: u32, hour: u32, minute: u32, sec
         minute,
         second,
         delta_t,
+    }
+}
+
+impl PlaceTime {
+    pub fn new(date: &DateTime, obs_lat_deg: f64, obs_lon_deg: f64, obs_elev_m: f64, p_mbar: f64, t_deg_c: f64,) -> PlaceTime {
+        PlaceTime {
+            date: *date,
+            obs_lat_deg,
+            obs_lon_deg,
+            obs_elev_m,
+            p_mbar,
+            t_deg_c,
+        }
+    }
+
+    pub fn change_time(&mut self, date: &DateTime) {
+        self.date = *date;
+    }
+
+    pub fn change_place(&mut self, obs_lat_deg: f64, obs_lon_deg: f64) {
+        self.obs_lat_deg = obs_lat_deg;
+        self.obs_lon_deg = obs_lon_deg;
     }
 }
 
@@ -261,10 +368,16 @@ pub fn julian_ephemeris_millenium(jce: f64) -> f64 {
     jce / 10.0
 }
 
+pub fn is_solar_eclipse(sun: CelestialObject, moon: CelestialObject) -> bool {
+    let ems_deg = (sun.zenith_deg.to_radians().cos() * moon.zenith_deg.to_radians().cos() +
+        sun.zenith_deg.to_radians().sin() * moon.zenith_deg.to_radians().sin() * (sun.azimuth_deg - moon.azimuth_deg).to_radians().cos()).acos().to_degrees();
+    return ems_deg <= (sun.semidiameter_deg + moon.semidiameter_deg);
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::Month;
+    use crate::{moon::Moon, sun::Sun, Month};
 
     #[test]
     fn test() { // Table A4.1 test values
@@ -298,5 +411,20 @@ mod tests {
         assert_eq!(45.0, hms(3, 0, 0.0).decimal());
         assert_eq!(5.1875, hms(0, 20, 45.0).decimal());
         assert!(0.00000001 > (hms(10, 15, 20.0).decimal() - deg2hms(hms(10, 15, 20.0).decimal()).decimal()).abs());
+        // Eclipse
+        let mut pt = PlaceTime::new(&new_time_t(2009, Month::JULY, 22, 2, 33, 0.0, 66.4), 24.6117, 143.3617, 0.0, 1000.0, 25.0);
+        assert!(is_solar_eclipse(Sun::new_day(&pt), Moon::new_moon(&pt)));
+        pt = PlaceTime::new(&new_time_t(2008, Month::AUGUST, 1, 9, 47, 18.0, 65.8), 81.1133, 34.7417, 0.0, 1000.0, 25.0);
+        assert!(is_solar_eclipse(Sun::new_day(&pt), Moon::new_moon(&pt)));
+        pt = PlaceTime::new(&new_time_t(2006, Month::MARCH, 29, 10, 33, 18.0, 64.9), 29.62, 22.8867, 0.0, 1000.0, 25.0);
+        assert!(is_solar_eclipse(Sun::new_day(&pt), Moon::new_moon(&pt)));
+        pt = PlaceTime::new(&new_time_t(2005, Month::APRIL, 8, 20, 15, 36.0, 64.8), -15.7883, -123.4817, 0.0, 1000.0, 25.0);
+        assert!(is_solar_eclipse(Sun::new_day(&pt), Moon::new_moon(&pt)));
+        pt = PlaceTime::new(&new_time_t(2002, Month::DECEMBER, 4, 7, 38, 42.0, 64.4), -40.5283, 62.8383, 0.0, 1000.0, 25.0);
+        assert!(is_solar_eclipse(Sun::new_day(&pt), Moon::new_moon(&pt)));
+        pt = PlaceTime::new(&new_time_t(2001, Month::JUNE, 21, 11, 57, 48.0, 64.2), -11.595, 0.9867, 0.0, 1000.0, 25.0);
+        assert!(is_solar_eclipse(Sun::new_day(&pt), Moon::new_moon(&pt)));
+        pt = PlaceTime::new(&new_time_t(1981, Month::FEBRUARY, 4, 21, 57, 36.0, 51.5), -45.8883, -145.9033, 0.0, 1000.0, 25.0);
+        assert!(is_solar_eclipse(Sun::new_day(&pt), Moon::new_moon(&pt)));
     }
 }
